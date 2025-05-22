@@ -276,6 +276,35 @@ declare module "react-native-maps-directions" {
      * Boolean to allow a polyline to be tappable and use the onPress function.
      */
     tappable?: boolean;
+    /**
+     * @boolean
+     * Boolean to allow alternative routes to be shown and selected on the map.
+     * Note, you should set alternativeStroke* props to style the alternative route
+     * so that it can be differentiated from the currently selected one.
+     * onReady will be invoked again with the currently selected route if the route changes
+     * 
+     */
+    showAlternatives?: boolean;
+    /**
+     * @number
+     * The stroke width to use for the path - the line displayed
+     * by polyline between two navigation points.
+     * Default: 1
+     */
+    alternativeStrokeWidth?: number;
+    /**
+     * @string
+     * The stroke color to use for the path.
+     * Default: "#000"
+     */
+    alternativeStrokeColor?: string;
+    /**
+     * @Array
+     * The stroke colors to use for the path (iOS only).
+     * Must be the same length as coordinates.
+     * Default: null
+     */
+    alternativeStrokeColors?: Array<string>;
   }
 
   export default class MapViewDirections extends React.Component<

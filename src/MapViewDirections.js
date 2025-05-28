@@ -15,7 +15,8 @@ class MapViewDirections extends Component {
 			distance: null,
 			duration: null,
 			alternativeRoutes: [],
-			selectedRouteIndex: 0,
+			// Use selectedRouteIndex from props if provided, otherwise default to 0
+			selectedRouteIndex: props.selectedRouteIndex !== undefined ? props.selectedRouteIndex : 0,
 		};
 	}
 
@@ -24,11 +25,11 @@ class MapViewDirections extends Component {
 	}
 
 	componentDidUpdate(prevProps) {
-		if (!isEqual(prevProps.origin, this.props.origin) || 
-			!isEqual(prevProps.destination, this.props.destination) || 
-			!isEqual(prevProps.waypoints, this.props.waypoints) || 
-			!isEqual(prevProps.mode, this.props.mode) || 
-			!isEqual(prevProps.precision, this.props.precision) || 
+		if (!isEqual(prevProps.origin, this.props.origin) ||
+			!isEqual(prevProps.destination, this.props.destination) ||
+			!isEqual(prevProps.waypoints, this.props.waypoints) ||
+			!isEqual(prevProps.mode, this.props.mode) ||
+			!isEqual(prevProps.precision, this.props.precision) ||
 			!isEqual(prevProps.splitWaypoints, this.props.splitWaypoints) ||
 			prevProps.showAlternatives !== this.props.showAlternatives) {
 			if (this.props.resetOnChange === false) {
@@ -39,6 +40,13 @@ class MapViewDirections extends Component {
 				});
 			}
 		}
+
+		// If selectedRouteIndex prop changes, update the state and selected route
+		if (this.props.selectedRouteIndex !== undefined && prevProps.selectedRouteIndex !== this.props.selectedRouteIndex) {
+			if (this.props.selectedRouteIndex >= 0 && this.props.selectedRouteIndex < this.state.alternativeRoutes.length) {
+				this.selectAlternativeRoute(this.props.selectedRouteIndex, false); // Don't call onSelectRoute again
+			}
+		}
 	}
 
 	resetState = (cb = null) => {
@@ -47,26 +55,52 @@ class MapViewDirections extends Component {
 			distance: null,
 			duration: null,
 			alternativeRoutes: [],
-			selectedRouteIndex: 0,
+			selectedRouteIndex: this.props.selectedRouteIndex !== undefined ? this.props.selectedRouteIndex : 0,
 		}, cb);
 	}
 
 	// Handle selection of an alternative route
-	selectAlternativeRoute = (index) => {
+	selectAlternativeRoute = (index, callOnSelectRoute = true) => {
 		if (index >= 0 && index < this.state.alternativeRoutes.length) {
 			const selectedRoute = this.state.alternativeRoutes[index];
-			
-			this.setState({
-				coordinates: selectedRoute.coordinates,
-				distance: selectedRoute.distance,
-				duration: selectedRoute.duration,
-				selectedRouteIndex: index,
-			}, () => {
-				// Call onReady with the selected route data
-				if (this.props.onReady) {
-					this.props.onReady(selectedRoute);
-				}
-			});
+
+			// If onSelectRoute is provided, call it
+			if (this.props.onSelectRoute && callOnSelectRoute) {
+				this.props.onSelectRoute(index);
+			}
+
+			// If selectedRouteIndex is managed externally, don't update internal state directly
+			// The update will come via props through componentDidUpdate
+			if (this.props.selectedRouteIndex === undefined) {
+				this.setState({
+					coordinates: selectedRoute.coordinates,
+					distance: selectedRoute.distance,
+					duration: selectedRoute.duration,
+					selectedRouteIndex: index,
+				}, () => {
+					// Call onReady with the selected route data
+					if (this.props.onReady) {
+						this.props.onReady(selectedRoute);
+					}
+				});
+			} else {
+				// Even if managed externally, we might need to update coordinates, distance, duration
+				// if the parent only manages the index.
+				// However, it's better if the parent also handles this based on the new index.
+				// For now, let's assume if selectedRouteIndex is provided, the parent handles everything.
+				// If not, we update the local state for display.
+				this.setState({
+					coordinates: selectedRoute.coordinates,
+					distance: selectedRoute.distance,
+					duration: selectedRoute.duration,
+					// selectedRouteIndex will be updated via props
+				}, () => {
+					// Call onReady with the selected route data
+					if (this.props.onReady) {
+						this.props.onReady(selectedRoute);
+					}
+				});
+			}
 		}
 	}
 
@@ -249,13 +283,34 @@ class MapViewDirections extends Component {
 			}, []);
 
 			// Plot it out and call the onReady callback
+			const currentSelectedRouteIndex = this.props.selectedRouteIndex !== undefined ? this.props.selectedRouteIndex : 0;
+			let newCoordinates = result.coordinates;
+			let newDistance = result.distance;
+			let newDuration = result.duration;
+
+			if (alternativeRoutes.length > 0 && currentSelectedRouteIndex < alternativeRoutes.length) {
+				const selectedRouteData = alternativeRoutes[currentSelectedRouteIndex];
+				newCoordinates = selectedRouteData.coordinates;
+				newDistance = selectedRouteData.distance;
+				newDuration = selectedRouteData.duration;
+			}
+
+
 			this.setState({
-				coordinates: result.coordinates,
+				coordinates: newCoordinates,
+				distance: newDistance,
+				duration: newDuration,
 				alternativeRoutes: alternativeRoutes,
-				selectedRouteIndex: 0,
+				// selectedRouteIndex is managed by props or defaults to 0
+				selectedRouteIndex: currentSelectedRouteIndex,
 			}, function() {
 				if (onReady) {
-					onReady(result);
+					// If alternatives are present, onReady should reflect the initially selected one
+					if (alternativeRoutes.length > 0 && currentSelectedRouteIndex < alternativeRoutes.length) {
+						onReady(alternativeRoutes[currentSelectedRouteIndex]);
+					} else {
+						onReady(result);
+					}
 				}
 			});
 		})
@@ -287,7 +342,6 @@ class MapViewDirections extends Component {
 			}
 		}
 
-		console.log(url);
 		return fetch(url)
 			.then(response => response.json())
 			.then(json => {
@@ -339,7 +393,10 @@ class MapViewDirections extends Component {
 	}
 
 	render() {
-		const { coordinates, alternativeRoutes, selectedRouteIndex } = this.state;
+		const { alternativeRoutes } = this.state;
+		const coordinates = this.state.coordinates;
+		const selectedRouteIndex = this.props.selectedRouteIndex !== undefined ? this.props.selectedRouteIndex : this.state.selectedRouteIndex;
+
 
 		if (!coordinates) {
 			return null;
@@ -364,23 +421,25 @@ class MapViewDirections extends Component {
 			strokeColor,
 			strokeWidth,
 			strokeColors,
+			selectedRouteIndex: selectedRouteIndexProp, // aliasing to avoid conflict
+			onSelectRoute, // eslint-disable-line no-unused-vars
 			...props
 		} = this.props;
 
-		const AlternativeRoutes = ({strokeColor, strokeColors, strokeWidth}) => {
+		const AlternativeRoutesComponent = ({strokeColor: altStrokeColor, strokeColors: altStrokeColors, strokeWidth: altStrokeWidth}) => {
 			return alternativeRoutes.map((route, index) => {
 					// Skip the selected route as it will be rendered with the user's specified style
 					if (index === selectedRouteIndex) return null;
-				
+
 					return (
 						<Polyline
 							key={`alternative_${index}`}
 							coordinates={route.coordinates}
 							zIndex={0}
-							fillColor={strokeColor}
-							strokeColors={strokeColors}
-							strokeColor={strokeColor}
-							strokeWidth={strokeWidth}
+							fillColor={altStrokeColor}
+							strokeColors={altStrokeColors}
+							strokeColor={altStrokeColor}
+							strokeWidth={altStrokeWidth}
 							tappable={true}
 							onPress={() => this.selectAlternativeRoute(index)}
 							{...props}
@@ -392,16 +451,18 @@ class MapViewDirections extends Component {
 		// Render main route and alternative routes
 		return (
 			<>
-				<Polyline 
-				    key="main_route"
-					coordinates={coordinates} 
-					zIndex={1}
-					strokeColor={strokeColor}
-					strokeWidth={strokeWidth}
-					strokeColors={strokeColors}
-					{...props} 
-				/>
-				<AlternativeRoutes strokeWidth={alternativeStrokeWidth} strokeColor={alternativeStrokeColor} strokeColors={alternativeStrokeColors}/>	
+				{coordinates && (
+					<Polyline
+						key="main_route"
+						coordinates={coordinates}
+						zIndex={1}
+						strokeColor={strokeColor}
+						strokeWidth={strokeWidth}
+						strokeColors={strokeColors}
+						{...props}
+					/>
+				)}
+				<AlternativeRoutesComponent strokeWidth={alternativeStrokeWidth} strokeColor={alternativeStrokeColor} strokeColors={alternativeStrokeColors}/>
 			</>
 		);
 	}
@@ -447,6 +508,8 @@ MapViewDirections.propTypes = {
 	timePrecision: PropTypes.oneOf(['now', 'none']),
 	channel: PropTypes.string,
 	showAlternatives: PropTypes.bool,
+	selectedRouteIndex: PropTypes.number,
+	onSelectRoute: PropTypes.func,
 };
 
 export default MapViewDirections;

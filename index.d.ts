@@ -305,6 +305,17 @@ declare module "react-native-maps-directions" {
      * Default: null
      */
     alternativeStrokeColors?: Array<string>;
+    /**
+     * @number
+     * The index of the currently selected route. This can be used to control
+     * the selected route from outside the component.
+     */
+    selectedRouteIndex?: number;
+    /**
+     * Callback that is called when an alternative route is selected by the user.
+     * It receives the index of the selected route.
+     */
+    onSelectRoute?: (index: number) => void;
   }
 
   export default class MapViewDirections extends React.Component<
